@@ -28,9 +28,9 @@ class App(ctk.CTk):
         super().__init__()
 
         # --- 窗口基本设置 ---
-        self.title("波纹腹板钢梁计算工具 v1.1")
-        self.geometry("1000x750") # 增加了初始尺寸以容纳新布局
-        self.minsize(900, 750)   # 设置最小窗口尺寸
+        self.title("波纹腹板钢梁计算工具 v1.3")
+        self.geometry("1200x800") # 增加了初始尺寸以容纳新布局
+        self.minsize(1100, 800)   # 设置最小窗口尺寸
         ctk.set_appearance_mode("System") # or "Light", "Dark"
         ctk.set_default_color_theme("blue")
 
@@ -64,11 +64,42 @@ class App(ctk.CTk):
         input_scroll_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
         input_scroll_frame.grid_columnconfigure(1, weight=1)
 
-
-        ctk.CTkLabel(input_scroll_frame, text="截面数据库:").grid(row=0, column=0, columnspan=2, padx=10, pady=5, sticky="w")
-        self.section_dropdown = ctk.CTkComboBox(input_scroll_frame, width=250, values=self.section_names, command=self.on_section_select)
-        self.section_dropdown.grid(row=1, column=0, columnspan=3, padx=10, pady=5, sticky="w")
+        # --- 2.1 数据库选择区域 ---
+        self.database_frame = ctk.CTkFrame(input_scroll_frame)
+        self.database_frame.grid(row=0, column=0, columnspan=3, padx=5, pady=10, sticky="ew")
+        self.database_frame.grid_columnconfigure(1, weight=1)
+        self.database_frame.grid_columnconfigure(3, weight=1)
         
+        ctk.CTkLabel(self.database_frame, text="分步选择截面:", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=4, padx=5, pady=(5,10), sticky="w")
+        
+        # 第一步：选择腹板参数
+        ctk.CTkLabel(self.database_frame, text="1. 腹板高度 (mm):").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        self.hw_dropdown = ctk.CTkComboBox(self.database_frame, width=120, command=self.on_hw_select)
+        self.hw_dropdown.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        
+        ctk.CTkLabel(self.database_frame, text="腹板厚度 (mm):").grid(row=1, column=2, padx=5, pady=5, sticky="w")
+        self.tw_dropdown = ctk.CTkComboBox(self.database_frame, width=120, command=self.on_tw_select)
+        self.tw_dropdown.grid(row=1, column=3, padx=5, pady=5, sticky="w")
+        
+        # 第二步：选择翼缘参数
+        ctk.CTkLabel(self.database_frame, text="2. 翼缘宽度 (mm):").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        self.bf_dropdown = ctk.CTkComboBox(self.database_frame, width=120, command=self.on_bf_select)
+        self.bf_dropdown.grid(row=2, column=1, padx=5, pady=5, sticky="w")
+        
+        ctk.CTkLabel(self.database_frame, text="翼缘厚度 (mm):").grid(row=2, column=2, padx=5, pady=5, sticky="w")
+        self.tf_dropdown = ctk.CTkComboBox(self.database_frame, width=120, command=self.on_tf_select)
+        self.tf_dropdown.grid(row=2, column=3, padx=5, pady=5, sticky="w")
+        
+        # 第三步：最终选择截面
+        ctk.CTkLabel(self.database_frame, text="3. 选择截面:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        self.final_section_dropdown = ctk.CTkComboBox(self.database_frame, width=250, command=self.on_final_section_select)
+        self.final_section_dropdown.grid(row=3, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
+        
+        # 重置按钮
+        self.reset_button = ctk.CTkButton(self.database_frame, text="重置选择", width=80, command=self.reset_selection)
+        self.reset_button.grid(row=3, column=3, padx=5, pady=5, sticky="e")
+
+        # --- 2.2 手动参数输入区域 ---
         self.entries = {}
         # 拆分参数以插入波纹几何部分
         param_labels_part1 = {
@@ -128,7 +159,6 @@ class App(ctk.CTk):
             self.entries[key] = entry
             row_counter += 1
 
-
         # --- 3. 计算选项区 ---
         calc_options_frame = ctk.CTkFrame(main_frame)
         calc_options_frame.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
@@ -161,10 +191,164 @@ class App(ctk.CTk):
         self.result_textbox.grid(row=1, column=0, padx=0, pady=5, sticky="nsew")
 
         # --- 初始化UI状态 ---
+        self.initialize_dropdowns()
         self.on_mode_change()
-        if self.section_names and self.section_names[0] and "错误" not in self.section_names[0]:
-            self.section_dropdown.set(self.section_names[0])
-            self.on_section_select(self.section_names[0])
+
+    def initialize_dropdowns(self):
+        """初始化分步选择的下拉框"""
+        if self.db is None:
+            return
+            
+        try:
+            # 获取所有唯一的腹板高度，并排序
+            hw_values = sorted(self.db['hw'].unique())
+            self.hw_dropdown.configure(values=[str(int(val)) for val in hw_values])
+            
+            # 初始状态下其他下拉框为空
+            self.tw_dropdown.configure(values=[])
+            self.bf_dropdown.configure(values=[])
+            self.tf_dropdown.configure(values=[])
+            self.final_section_dropdown.configure(values=[])
+            
+        except Exception as e:
+            self.display_error(f"初始化下拉框时出错: {e}")
+
+    def on_hw_select(self, selected_hw):
+        """选择腹板高度后，更新腹板厚度选项"""
+        if self.db is None:
+            return
+            
+        try:
+            hw_value = float(selected_hw)
+            filtered_db = self.db[self.db['hw'] == hw_value]
+            
+            # 获取对应的腹板厚度选项
+            tw_values = sorted(filtered_db['tw'].unique())
+            self.tw_dropdown.configure(values=[str(val) for val in tw_values])
+            self.tw_dropdown.set("")
+            
+            # 清空后续选项
+            self.bf_dropdown.configure(values=[])
+            self.tf_dropdown.configure(values=[])
+            self.final_section_dropdown.configure(values=[])
+            
+        except Exception as e:
+            self.display_error(f"选择腹板高度时出错: {e}")
+
+    def on_tw_select(self, selected_tw):
+        """选择腹板厚度后，更新翼缘宽度选项"""
+        if self.db is None:
+            return
+            
+        try:
+            hw_value = float(self.hw_dropdown.get())
+            tw_value = float(selected_tw)
+            
+            filtered_db = self.db[(self.db['hw'] == hw_value) & (self.db['tw'] == tw_value)]
+            
+            # 获取对应的翼缘宽度选项
+            bf_values = sorted(filtered_db['bf'].unique())
+            self.bf_dropdown.configure(values=[str(int(val)) for val in bf_values])
+            self.bf_dropdown.set("")
+            
+            # 清空后续选项
+            self.tf_dropdown.configure(values=[])
+            self.final_section_dropdown.configure(values=[])
+            
+        except Exception as e:
+            self.display_error(f"选择腹板厚度时出错: {e}")
+
+    def on_bf_select(self, selected_bf):
+        """选择翼缘宽度后，更新翼缘厚度选项"""
+        if self.db is None:
+            return
+            
+        try:
+            hw_value = float(self.hw_dropdown.get())
+            tw_value = float(self.tw_dropdown.get())
+            bf_value = float(selected_bf)
+            
+            filtered_db = self.db[(self.db['hw'] == hw_value) & 
+                                (self.db['tw'] == tw_value) & 
+                                (self.db['bf'] == bf_value)]
+            
+            # 获取对应的翼缘厚度选项
+            tf_values = sorted(filtered_db['tf'].unique())
+            self.tf_dropdown.configure(values=[str(val) for val in tf_values])
+            self.tf_dropdown.set("")
+            
+            # 清空最终选项
+            self.final_section_dropdown.configure(values=[])
+            
+        except Exception as e:
+            self.display_error(f"选择翼缘宽度时出错: {e}")
+
+    def on_tf_select(self, selected_tf):
+        """选择翼缘厚度后，更新最终截面选项"""
+        if self.db is None:
+            return
+            
+        try:
+            hw_value = float(self.hw_dropdown.get())
+            tw_value = float(self.tw_dropdown.get())
+            bf_value = float(self.bf_dropdown.get())
+            tf_value = float(selected_tf)
+            
+            filtered_db = self.db[(self.db['hw'] == hw_value) & 
+                                (self.db['tw'] == tw_value) & 
+                                (self.db['bf'] == bf_value) & 
+                                (self.db['tf'] == tf_value)]
+            
+            # 获取最终的截面名称选项
+            section_names = filtered_db['SectionName'].tolist()
+            self.final_section_dropdown.configure(values=section_names)
+            
+            # 如果只有一个选项，自动选择它
+            if len(section_names) == 1:
+                self.final_section_dropdown.set(section_names[0])
+                self.on_final_section_select(section_names[0])
+            else:
+                self.final_section_dropdown.set("")
+            
+        except Exception as e:
+            self.display_error(f"选择翼缘厚度时出错: {e}")
+
+    def on_final_section_select(self, selected_section):
+        """最终选择截面后，填充所有参数"""
+        if self.db is None or not selected_section:
+            return
+            
+        try:
+            section_data = self.db[self.db["SectionName"] == selected_section].iloc[0]
+            
+            for key in self.entries.keys():
+                if key in section_data.index:
+                    self.set_entry_text(self.entries[key], section_data[key])
+                else:
+                    default_values = {
+                        "E": 200000, "G": 77000, "nu": 0.3,
+                        "phi_s": 0.75, "phi_f": 0.9, "omega2": 1.0,
+                        "alpha_LT": 0.34, "L": 6000
+                    }
+                    if key in default_values:
+                        self.set_entry_text(self.entries[key], default_values[key])
+                    else:
+                        # Clear fields that are not in the defaults or the CSV
+                        self.set_entry_text(self.entries[key], "")
+                        
+        except Exception as e:
+            self.display_error(f"读取截面数据时出错: {e}")
+
+    def reset_selection(self):
+        """重置所有选择"""
+        self.hw_dropdown.set("")
+        self.tw_dropdown.set("")
+        self.bf_dropdown.set("")
+        self.tf_dropdown.set("")
+        self.final_section_dropdown.set("")
+        
+        # 重新初始化下拉框
+        self.initialize_dropdowns()
 
     def _arc_length_integrand(self, x, a3, w):
         """
@@ -262,41 +446,27 @@ class App(ctk.CTk):
         except Exception as e:
             self.display_error(f"发生未知错误: {e}\n{traceback.format_exc()}")
 
-
     def on_mode_change(self):
         """根据选择的模式，启用/禁用相应的控件。"""
         is_db_mode = (self.mode_var.get() == "database")
         
-        self.section_dropdown.configure(state="normal" if is_db_mode else "disabled")
+        # 控制数据库选择区域的显示
+        if is_db_mode:
+            self.database_frame.grid()
+        else:
+            self.database_frame.grid_remove()
+        
+        # 控制各个下拉框的状态
+        self.hw_dropdown.configure(state="normal" if is_db_mode else "disabled")
+        self.tw_dropdown.configure(state="normal" if is_db_mode else "disabled")
+        self.bf_dropdown.configure(state="normal" if is_db_mode else "disabled")
+        self.tf_dropdown.configure(state="normal" if is_db_mode else "disabled")
+        self.final_section_dropdown.configure(state="normal" if is_db_mode else "disabled")
+        self.reset_button.configure(state="normal" if is_db_mode else "disabled")
+        
+        # 控制手动输入框的状态
         for key, entry in self.entries.items():
             entry.configure(state="disabled" if is_db_mode else "normal")
-
-    def on_section_select(self, selected_section):
-        """当从数据库下拉菜单中选择一个截面时，自动填充参数。"""
-        if self.db is None:
-            self.display_error("数据库未加载，请检查 sections_cwb.csv 文件")
-            return
-            
-        try:
-            section_data = self.db[self.db["SectionName"] == selected_section].iloc[0]
-            
-            for key in self.entries.keys():
-                if key in section_data.index:
-                    self.set_entry_text(self.entries[key], section_data[key])
-                else:
-                    default_values = {
-                        "E": 200000, "G": 77000, "nu": 0.3,
-                        "phi_s": 0.9, "phi_f": 0.9, "omega2": 1.0,
-                        "alpha_LT": 0.34, "L": 6000
-                    }
-                    if key in default_values:
-                        self.set_entry_text(self.entries[key], default_values[key])
-                    else:
-                        # Clear fields that are not in the defaults or the CSV
-                        self.set_entry_text(self.entries[key], "")
-                        
-        except Exception as e:
-            self.display_error(f"读取截面数据时出错: {e}")
 
     def set_entry_text(self, entry, text):
         """一个辅助函数，用于设置输入框的文本。"""
@@ -312,6 +482,9 @@ class App(ctk.CTk):
         if self.mode_var.get() == 'manual':
             for entry in self.entries.values():
                 entry.delete(0, "end")
+        else:
+            # 数据库模式下清除选择
+            self.reset_selection()
         
         self.result_textbox.configure(state="normal")
         self.result_textbox.delete("1.0", "end")
@@ -362,6 +535,7 @@ class App(ctk.CTk):
             result_text += f"计算模型: {calc_model}\n"
             result_text += "--------------------\n"
             
+            # 显示承载力结果
             shear_cap = results.get('shear_capacity')
             moment_cap = results.get('moment_capacity')
 
@@ -369,6 +543,95 @@ class App(ctk.CTk):
                 result_text += f"抗剪承载力 (Vr): {shear_cap:.2f} kN\n"
             if moment_cap is not None:
                 result_text += f"抗弯承载力 (Mr): {moment_cap:.2f} kN·m\n"
+            
+            # 显示失效模式
+            failure_mode = results.get('failure_mode')
+            if failure_mode:
+                result_text += f"失效模式: {failure_mode}\n"
+            
+            result_text += "\n--- 详细计算信息 ---\n"
+            
+            # EN剪切模型的详细信息
+            if calc_model == "EN剪力模型":
+                local_cap = results.get('local_capacity')
+                global_cap = results.get('global_capacity')
+                local_stress = results.get('local_buckling_stress')
+                global_stress = results.get('global_buckling_stress')
+                local_slender = results.get('local_slenderness')
+                global_slender = results.get('global_slenderness')
+                local_reduction = results.get('local_reduction_factor')
+                global_reduction = results.get('global_reduction_factor')
+                
+                if local_cap is not None and global_cap is not None:
+                    result_text += f"局部屈曲承载力: {local_cap:.2f} kN\n"
+                    result_text += f"整体屈曲承载力: {global_cap:.2f} kN\n"
+                    
+                if local_stress is not None and global_stress is not None:
+                    result_text += f"局部临界应力: {local_stress:.2f} MPa\n"
+                    result_text += f"整体临界应力: {global_stress:.2f} MPa\n"
+                    
+                if local_slender is not None and global_slender is not None:
+                    result_text += f"局部长细比: {local_slender:.3f}\n"
+                    result_text += f"整体长细比: {global_slender:.3f}\n"
+                    
+                if local_reduction is not None and global_reduction is not None:
+                    result_text += f"局部折减系数: {local_reduction:.3f}\n"
+                    result_text += f"整体折减系数: {global_reduction:.3f}\n"
+            
+            # EN弯曲模型的详细信息
+            elif calc_model == "EN弯曲模型":
+                slenderness = results.get('slenderness_ratio')
+                ltb_limit = results.get('ltb_limit')
+                ltb_occurs = results.get('ltb_occurs')
+                critical_moment = results.get('critical_moment')
+                reduction_factor = results.get('reduction_factor')
+                elastic_modulus = results.get('elastic_modulus')
+                plastic_modulus = results.get('plastic_modulus')
+                
+                if slenderness is not None:
+                    result_text += f"长细比 (λ_LT): {slenderness:.3f}\n"
+                if ltb_limit is not None:
+                    result_text += f"LTB界限长细比: {ltb_limit:.3f}\n"
+                if ltb_occurs is not None:
+                    ltb_status = "是" if ltb_occurs else "否"
+                    result_text += f"发生侧扭屈曲: {ltb_status}\n"
+                if critical_moment is not None:
+                    result_text += f"弹性临界弯矩: {critical_moment:.2f} kN·m\n"
+                if reduction_factor is not None:
+                    result_text += f"LTB折减系数: {reduction_factor:.3f}\n"
+                if elastic_modulus is not None:
+                    result_text += f"弹性截面模量: {elastic_modulus:.0f} cm³\n"
+                if plastic_modulus is not None:
+                    result_text += f"塑性截面模量: {plastic_modulus:.0f} cm³\n"
+            
+            # CSA弯曲模型的详细信息
+            elif calc_model == "CSA弯曲模型":
+                buckling_type = results.get('buckling_type')
+                slenderness = results.get('slenderness_ratio')
+                plastic_moment = results.get('plastic_moment')
+                critical_moment = results.get('critical_moment')
+                buckling_limit = results.get('buckling_limit')
+                ltb_occurs = results.get('ltb_occurs')
+                elastic_modulus = results.get('elastic_modulus')
+                plastic_modulus = results.get('plastic_modulus')
+                
+                if buckling_type:
+                    result_text += f"屈曲类型: {buckling_type}\n"
+                if slenderness is not None:
+                    result_text += f"长细比: {slenderness:.3f}\n"
+                if ltb_occurs is not None:
+                    ltb_status = "是" if ltb_occurs else "否"
+                    result_text += f"发生侧扭屈曲: {ltb_status}\n"
+                if plastic_moment is not None:
+                    result_text += f"塑性弯矩: {plastic_moment:.2f} kN·m\n"
+                if critical_moment is not None:
+                    result_text += f"临界弯矩: {critical_moment:.2f} kN·m\n"
+                if buckling_limit is not None:
+                    result_text += f"屈曲界限(0.67Mp): {buckling_limit:.2f} kN·m\n"
+                if elastic_modulus is not None:
+                    result_text += f"弹性截面模量: {elastic_modulus:.0f} cm³\n"
+                if plastic_modulus is not None:
+                    result_text += f"塑性截面模量: {plastic_modulus:.0f} cm³\n"
 
             self.result_textbox.insert("1.0", result_text)
             self.result_textbox.configure(state="disabled")

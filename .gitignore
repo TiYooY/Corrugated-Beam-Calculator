@@ -13,3 +13,7 @@ __pycache__/
 # IDE/Editor specific
 .vscode/
 .idea/
+
+#datasets
+combine_csv.py
+merged_sections.xlsx
