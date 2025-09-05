@@ -107,11 +107,11 @@ class CorrugatedWebGirder(StructuralElement):
         
         # 5. 确定失效模式
         if lambda_LT <= 0.2:
-            failure_mode = "截面强度控制（无LTB影响）"
+            failure_mode = 'fm_section_no_ltb'
         elif lambda_LT <= ltb_limit:
-            failure_mode = "截面强度控制（轻微LTB影响）"
+            failure_mode = 'fm_section_minor_ltb'
         else:
-            failure_mode = "侧扭屈曲控制"
+            failure_mode = 'fm_ltb_control'
         
         # 6. 计算最终的抗弯承载力
         moment_capacity = self.phi_f * chi_LT * M_Rk
@@ -152,13 +152,13 @@ class CorrugatedWebGirder(StructuralElement):
             # 非弹性屈曲范围
             moment_capacity = 1.15 * self.phi_f * Mp * (1 - (0.28 * Mp / Mu))
             moment_capacity = min(moment_capacity, self.phi_f * Mp)
-            failure_mode = "非弹性屈曲控制"
-            buckling_type = "非弹性屈曲"
+            failure_mode = 'fm_inelastic_buckling'
+            buckling_type = 'bt_inelastic_buckling'
         else:
             # 弹性屈曲范围
             moment_capacity = self.phi_f * Mu
-            failure_mode = "弹性屈曲控制"
-            buckling_type = "弹性屈曲"
+            failure_mode = 'fm_elastic_buckling'
+            buckling_type = 'bt_elastic_buckling'
         
         # 4. 计算长细比（基于CSA方法）
         slenderness_ratio = np.sqrt(Mp / Mu) if Mu > 0 else float('inf')
@@ -240,13 +240,13 @@ class CorrugatedWebGirder(StructuralElement):
         
         # 判断失效模式
         if vl < vg:
-            failure_mode = "局部剪切屈曲控制"
+            failure_mode = "fm_local_shear_buckling"
             controlling_capacity = vl
             controlling_stress = local_results['critical_stress']
             controlling_slenderness = local_results['slenderness']
             controlling_reduction = local_results['reduction_factor']
         else:
-            failure_mode = "整体剪切屈曲控制"
+            failure_mode = "fm_global_shear_buckling"
             controlling_capacity = vg
             controlling_stress = global_results['critical_stress']
             controlling_slenderness = global_results['slenderness']
